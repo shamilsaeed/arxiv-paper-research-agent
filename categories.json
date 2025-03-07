@@ -38,5 +38,6 @@
     "cs.SD": "sound",
     "cs.SE": "software_engineering",
     "cs.SI": "social_and_information_networks",
-    "cs.SY": "systems_and_control"
+    "cs.SY": "systems_and_control",
+    "unknown": "unknown"
 }

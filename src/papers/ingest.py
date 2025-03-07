@@ -1,16 +1,16 @@
 import arxiv
 import json
-import requests
+import numpy as np
+import argparse
 from pathlib import Path
-from tqdm import tqdm
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import time
 
 CATEGORIES = json.load(open("categories.json"))
 
 class ArxivIngestor:
     def __init__(self):
-        self.client = arxiv.Client(page_size= 2000, delay_seconds = 3, num_retries = 10)
+        self.client = arxiv.Client(page_size= 1000, num_retries = 3)
         self.data_dir = Path("data/raw")
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.semantic_scholar_base_url = "https://api.semanticscholar.org/v1/paper/"
@@ -31,30 +31,33 @@ class ArxivIngestor:
         """Remove version number from arxiv ID"""
         return arxiv_id.split('v')[0]
 
-    def process_papers(self, year: int = 2024):
-        """Fetch all Computer Science papers for given year"""
-        print(f"Fetching CS papers from {year}")
+    def process_papers(self, start_date: str, end_date: str):
+        """Fetch all Computer Science papers for given date range
+        Args:
+            start_date: Format 'YYYYMM'
+            end_date: Format 'YYYYMM'
+        """
+        print(f"Fetching CS papers from {start_date} to {end_date}")
         
+        # Create month-year directory
+        month_year_dir = self.data_dir / f"{start_date}"
+        month_year_dir.mkdir(exist_ok=True)
+        self.current_data_dir = month_year_dir
+               
         search = arxiv.Search(
-            query=f"cat:cs.* AND submittedDate:[{year} TO {year+1}]",
-            max_results=15000,  # Fetch all papers
+            query=f"cat:cs.* AND submittedDate:[{start_date} TO {end_date}]",
+            max_results=None,
             sort_by=arxiv.SortCriterion.SubmittedDate
         )
         
         papers_batch = {} # {category: [paper_data]}
-        offset = 0
-        page_position = 0  # Track position within current page
 
         while True:
             try:
                 # Get results with current offset
-                results = self.client.results(search, offset=offset)
+                results = self.client.results(search)
                 
-                for i, paper in enumerate(results):
-                    
-                    if i < page_position:
-                        continue
-                    
+                for paper in results:
                     try:
                         arxiv_id = paper.get_short_id()
                         paper_data = {
@@ -73,7 +76,6 @@ class ArxivIngestor:
                         
                         self.processed_papers += 1
                         print(f"Processed {self.processed_papers} papers")
-                        page_position += 1
                         
                         if self.processed_papers % 100 == 0:
                             self._save_batch(papers_batch)
@@ -83,21 +85,17 @@ class ArxivIngestor:
                         print(f"Error processing paper: {e}")
                         continue
                 
-                # Successfully processed this page, update offset
-                offset += self.client.page_size
-                page_position = 0  # Reset position for next page
+                if papers_batch:
+                    self._save_batch(papers_batch)
+                    
             except arxiv.UnexpectedEmptyPageError:
-                print(f"\nGot empty page at offset {offset}, sleeping for 10 seconds before retry...")
-                time.sleep(10)  # Sleep longer to let API recover
+                print(f"\nGot empty page, sleeping for few seconds before retry...")
+                noise = np.random.normal(0, 10) 
+                sleep_time = 5 + noise 
+                time.sleep(sleep_time) 
                 # Don't update offset - retry same page
                 continue
                 
-            # except Exception as e:
-            #     print(f"\nUnexpected error at offset {offset}: {e}")
-            #     if papers_batch:
-            #         self._save_batch(papers_batch)
-            #     break
-
 
     def _save_batch(self, papers: Dict[str, List[Dict]]):
         """Save all accumulated papers when batch size is reached"""
@@ -106,7 +104,7 @@ class ArxivIngestor:
         for category, papers in papers.items():
             if papers:  # Only save categories that have papers
                 category_name = self.categories.get(category, "unknown")
-                output_file = self.data_dir / f"{category_name}_2024.jsonl"
+                output_file = self.current_data_dir / f"{category_name}.jsonl"
                 
                 # Append mode
                 with open(output_file, 'a') as f:
@@ -115,11 +113,17 @@ class ArxivIngestor:
                 
                 category_counts[category_name] = len(papers)
     
-        # Single summary print
-    #    summary = ", ".join([f"{cat}: {count}" for cat, count in category_counts.items()])
-    #    print(f"\nAppended papers to categories: {summary}")
         
         
 if __name__ == "__main__":
+    
+    parser = argparse.ArgumentParser(description='Ingest ArXiv papers for a specific date range')
+    parser.add_argument('--start-date', type=str, required=True,
+                      help='Start date in YYYY-MM format (e.g., 2024-01)')
+    parser.add_argument('--end-date', type=str, required=True,
+                      help='End date in YYYY-MM format (e.g., 2024-02)')
+    
+    args = parser.parse_args()
+    
     ingestor = ArxivIngestor()
-    ingestor.process_papers(year=2024)
+    ingestor.process_papers(args.start_date, args.end_date)

@@ -13,22 +13,28 @@ class MilvusConfig:
     milvus_password: str = os.getenv("MILVUS_PASSWORD", "")
       
 @dataclass
-class ArxivConfig:
-    max_results: int = 100
-    batch_size: int = 10
-    categories: list = None  # if None, will fetch all CS categories
-    rate_limit: float = 1.0  # seconds between requests
+class OpenAIConfig:
+    api_key: str = os.getenv("OPENAI_API_KEY")
+    model: str = os.getenv("OPENAI_MODEL", "text-embedding-3-small")
     
+@dataclass
+class GithubConfig:
+    token: str = os.getenv("GITHUB_TOKEN")
+    
+@dataclass
+class GroqConfig:
+    api_key: str = os.getenv("GROQ_API_KEY")
+    model: str = os.getenv("GROQ_MODEL", "llama3-70b-8192")
+
 @dataclass
 class Config:
     milvus: MilvusConfig = field(default_factory=MilvusConfig)
-    arxiv: ArxivConfig = field(default_factory=ArxivConfig)
-    
+    openai: OpenAIConfig = field(default_factory=OpenAIConfig)
+    github: GithubConfig = field(default_factory=GithubConfig)
+    groq: GroqConfig = field(default_factory=GroqConfig)
 
-# Example usage:
+
 if __name__ == "__main__":
     config = Config()
     print(f"Milvus host: {config.milvus.milvus_host}")
     print(f"Milvus port: {config.milvus.milvus_port}")
-#    print(f"OpenAI model: {config.openai.model}")
-#    print(f"Arxiv batch size: {config.arxiv.batch_size}")
