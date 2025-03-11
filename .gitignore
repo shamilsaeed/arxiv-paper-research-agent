@@ -1,0 +1,33 @@
+.env
+.ipynb_checkpoints
+src/*/__pycache__/
+*.ipynb_checkpoints
+__pycache__
+gitleaks*
+LICENSE
+
+# Neo4j data directories
+neo4j/data/
+neo4j/logs/
+neo4j/import/
+neo4j/plugins/
+
+# db files
+*.db
+*.db.lock
+*.log
+*.log.*
+*.certs
+*.key
+*.pem
+
+# Neo4j debug logs
+debug.log
+.env*
+*.ipynb_checkpoints
+
+# milvus volumes
+volumes/*
+
+# data
+data/*

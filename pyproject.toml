@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "arxiv-paper-research-agent"
+version = "0.1.0"
+description = "A arXiv research agent that provides relevant research papers based on user input"
+authors = ["Shamil <saeedshamil@gmail.com>"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+numpy = ">=1.19.0,<2.0.0"
+pandas = "^2.2.3"
+arxiv = "^2.1.0" 
+semanticscholar = "^0.5.0"  
+pymilvus = "^2.5.4"
+openai = "^1.65.2"
+langchain = "^0.3.20"
+pypdf = "^5.3.1"
+langgraph = "^0.3.5"
+groq = "^0.18.0"
+pygithub = "^2.6.1"
+langchain-groq = "^0.2.4"
+streamlit = "^1.43.1"
+tiktoken = "^0.9.0"
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+pytest = "^8.3.4"
+isort = "^6.0.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
