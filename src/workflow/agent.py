@@ -1,11 +1,13 @@
 import json
-from langchain_groq import ChatGroq
-from src.workflow.tools import ResearchTools
-from langchain.prompts import PromptTemplate
-from langchain.agents import create_react_agent, AgentExecutor
-from src.embed.vector_db import MilvusManager
-from config import Config
+
+from langchain.agents import AgentExecutor, create_react_agent
 from langchain.memory import ConversationBufferMemory
+from langchain.prompts import PromptTemplate
+from langchain_groq import ChatGroq
+
+from config import Config
+from src.embed.vector_db import MilvusManager
+from src.workflow.tools import ResearchTools
 
 CATEGORIES = json.load(open("categories.json"))
 
@@ -81,7 +83,7 @@ class ResearchAssistant:
 
         3. get_paper_details: RAG-based Q&A
            - USE FOR: Specific questions about paper content
-           - INPUT: query and arxiv_id (e.g. "What is the experimental setup used in the paper?", "2103.14030")
+           - INPUT: query and arxiv_id (e.g. query = "What is the experimental setup used in the paper?", arxiv_id = "2103.14030")
            - REQUIRES: Paper must be processed first
 
         4. get_summary: Generate paper summary

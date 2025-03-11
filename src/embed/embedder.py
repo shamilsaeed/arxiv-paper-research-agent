@@ -1,7 +1,10 @@
-from config import Config
-from openai import OpenAI
 import time
 from typing import List
+
+from openai import OpenAI
+
+from config import Config
+
 client = OpenAI()
 config = Config()
 MODEL = config.openai.model

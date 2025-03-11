@@ -1,5 +1,8 @@
-from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
+from pymilvus import (Collection, CollectionSchema, DataType, FieldSchema,
+                      connections, utility)
+
 from config import Config
 
 config = Config()

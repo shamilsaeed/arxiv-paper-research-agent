@@ -1,10 +1,11 @@
-import arxiv
-import json
-import numpy as np
 import argparse
+import json
+import time
 from pathlib import Path
 from typing import Dict, List
-import time
+
+import arxiv
+import numpy as np
 
 CATEGORIES = json.load(open("categories.json"))
 

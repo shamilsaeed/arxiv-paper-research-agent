@@ -1,7 +1,9 @@
 import streamlit as st
+
+from src.embed.vector_db import MilvusManager
 from src.workflow.agent import ResearchAssistant
 from src.workflow.tools import ResearchTools
-from src.embed.vector_db import MilvusManager
+
 
 def initialize_agent():
     """Initialize the research assistant"""

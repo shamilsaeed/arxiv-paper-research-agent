@@ -1,10 +1,12 @@
 import json
 from pathlib import Path
+
 from tqdm import tqdm
+
 from config import Config
+from src.embed.embedder import embed_batch
 from src.embed.vector_db import MilvusManager
 from src.papers.ingest import CATEGORIES
-from src.embed.embedder import embed_batch
 
 CATEGORIES = json.load(open("categories.json"))
 

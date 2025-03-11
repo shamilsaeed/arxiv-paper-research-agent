@@ -1,18 +1,25 @@
-import os
 import json
-import requests
+import os
 import tempfile
 from typing import Dict, List
+
 import arxiv
-from langchain_community.document_loaders import PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from openai import OpenAI
-from langchain.tools import Tool
+import requests
+import tiktoken
 from github import Github
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.tools import Tool
+from langchain_community.document_loaders import PyPDFLoader
+from openai import OpenAI
+
 from config import Config
-from src.embed.vector_db import MilvusManager
 from src.embed.embedder import embed_batch
+from src.embed.vector_db import MilvusManager
+
 config = Config()
+MAX_TOKEN_COUNT = 30000
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
 
 CATEGORIES = json.load(open("categories.json"))
 
@@ -40,7 +47,7 @@ class ResearchTools:
             'summary': "gpt-4-turbo-preview",      # For detailed understanding
             'chat': "gpt-3.5-turbo"               # For simpler queries
         }
-        
+        self.enc = tiktoken.encoding_for_model("gpt-4-turbo-preview")
         self.tools = [
             Tool(
                 name="get_related_papers",
@@ -56,14 +63,16 @@ class ResearchTools:
                 Output: Boolean (True if newly processed, False if already exists)""",
                 func=self.get_paper_processed
             ),
-            Tool(
-                name="get_paper_details",
-                description="""Answer specific questions about a processed paper using RAG.
-                Only works if paper has been processed before.
-                Input: Query string and arxiv_id
-                Output: Detailed answer based on paper content""",
-                func=self.get_paper_details
-            ),
+            # Tool(
+            #     name="get_paper_details",
+            #     description="""Answer specific questions about a processed paper using RAG.
+            #     Only works if paper has been processed before.
+            #     Input format: Two parameters separated by comma:
+            #     "your question here", "paper_id_here"
+            #     Example: "What methods were used to analyze the data?", "2312.12345"
+            #     Output: Detailed answer based on paper content""",
+            #     func=self.get_paper_details
+            # ),
             Tool(
                 name="get_summary",
                 description="""Generate a structured summary of a paper.
@@ -194,8 +203,8 @@ class ResearchTools:
 
             # Chunk the text
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,
-                chunk_overlap=200,
+                chunk_size=CHUNK_SIZE,
+                chunk_overlap=CHUNK_OVERLAP,
                 length_function=len,
             )
             chunks = text_splitter.split_documents(pages)
@@ -231,8 +240,18 @@ class ResearchTools:
         
         # Get summary from Milvus
         all_chunks = self.milvus.get_all_paper_chunks(collection_name)  
-        full_text = "\n".join(chunk['chunk_text'] for chunk in all_chunks)
+        all_chunks_texts = [chunk['chunk_text'] for chunk in all_chunks]
+        full_text = "\n".join(all_chunks_texts)
+        token_count = len(self.enc.encode(full_text))
         
+        if token_count > MAX_TOKEN_COUNT:
+            print(f"Paper {arxiv_id} has {token_count} tokens, which is too long. Going to process first page only.")
+            # Get first 5 chunks (approximately one page)
+            text_to_summarize = "\n".join(all_chunks_texts[:5])
+        else:
+            print(f"Document size ok ({token_count} tokens). Processing full text.")
+            text_to_summarize = full_text
+             
         # Generate comprehensive summary
         summary_response = self.openai_client.chat.completions.create(
             model=self.models['summary'],
@@ -244,7 +263,7 @@ class ResearchTools:
                    3) Methodology
                    4) Main Results
                    5) Conclusions"""},
-                {"role": "user", "content": full_text}
+                {"role": "user", "content": text_to_summarize}
             ]
         )
         return {
