@@ -5,18 +5,19 @@ import tempfile
 from typing import Dict, List
 import arxiv
 from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from openai import OpenAI
 from langchain.tools import Tool
 from github import Github
 from config import Config
 from src.embed.vector_db import MilvusManager
-
+from src.embed.embedder import embed_batch
 config = Config()
 
 CATEGORIES = json.load(open("categories.json"))
 
         # Actions:
-        # - get_related_papers: Find relevant papers
+        # - get_related_papers: Find relevant papers along with metadata
         # - get_summary: Get detailed paper summary
         # - get_citations: Get citations for a paper
         # - get_authors: Get author details and their other papers
@@ -43,63 +44,60 @@ class ResearchTools:
         self.tools = [
             Tool(
                 name="get_related_papers",
-                description="""Search for research papers. Use when user wants to find papers about a topic.
-                Input: A simple text query string (e.g. "transformers in computer vision")
-                Returns: list of relevant papers with titles, summaries, and scores.""",
+                description="""Find research papers on a given topic along with metadata
+                Input: Text query (e.g. "transformers in computer vision")
+                Output: List of papers with titles, authors, publication dates, pdf_url, arxiv_id, and relevance scores""",
                 func=self.get_related_papers
             ),
             Tool(
-                name="get_citations",
-                description="""Get citation metrics and impact data for a paper.
-                Use when user asks about:
-                - paper influence
-                - citation counts
-                - research impact
+                name="get_paper_processed",
+                description="""Process and store a paper in the vector database.
                 Input: arxiv_id
-                Returns: citation statistics""",
-                func=self.get_citations
+                Output: Boolean (True if newly processed, False if already exists)""",
+                func=self.get_paper_processed
+            ),
+            Tool(
+                name="get_paper_details",
+                description="""Answer specific questions about a processed paper using RAG.
+                Only works if paper has been processed before.
+                Input: Query string and arxiv_id
+                Output: Detailed answer based on paper content""",
+                func=self.get_paper_details
             ),
             Tool(
                 name="get_summary",
-                description="""Generate detailed summary of a paper.
-                Use when user wants to:
-                - understand paper contents
-                - get key findings
-                - know methodology
+                description="""Generate a structured summary of a paper.
                 Input: arxiv_id
-                Returns: structured summary""",
+                Output: Comprehensive summary with problem, contributions, methodology, results, and conclusions""",
                 func=self.get_summary
             ),
             Tool(
-                name="get_authors",
-                description="""Get authors of a paper.
-                Use when user wants to know the authors of a paper.
+                name="get_citations",
+                description="""Retrieve citation metrics for a paper.
                 Input: arxiv_id
-                Returns: list of authors""",
-                func=self.get_authors
+                Output: Citation statistics including count, influence, and velocity""",
+                func=self.get_citations
             ),
             Tool(
                 name="get_github_repo",
-                description="""Get code repository of a paper.
-                Use when user wants to see the code of a paper.
-                Input: arxiv_id
-                Returns: list of authors""",
+                description="""Find associated code repositories for a paper.
+                Input: Paper title
+                Output: List of relevant GitHub repositories""",
                 func=self.get_github_repo
             )
         ]
-        
-    def get_authors(self, arxiv_id: str) -> List[str]:
-        """Get authors of a paper."""
-        search = arxiv.Search(id_list=[arxiv_id])
-        paper = next(self.arxiv_client.results(search))
-        return [a.name for a in paper.authors]
     
-    def get_github_repo(self, arxiv_title: str, top_k: int = 2) -> List[str]:
+    def get_github_repo(self, arxiv_title: str, k: int = 2) -> List[str]:
         """Get code repository of a paper."""
+        
         query = f"{arxiv_title} implementation"
-        repositories = self.github_client.search_repositories(query=query, sort='stars', order='desc')
-        return [x.repo for x in repositories[:top_k]]
-
+        repos = self.github_client.search_repositories(query=query, sort='stars', order='desc')
+        valid_repos = list(repos)
+        
+        if valid_repos:
+            return [x.full_name for x in valid_repos[:k]]
+        else:
+            return [] # found no repos
 
     def get_related_papers(self, query: str) -> List[Dict]:
         """
@@ -111,37 +109,33 @@ class ResearchTools:
         # Convert string input to expected format
         top_k = 5  # Default value
 
-        # 1. Identify relevant categories from query
-        categories = self._identify_categories(query)
-        print(f"Identified categories: {categories}")
-
-        # 2. Get query embedding
+        # Get query embedding
         response = self.openai_client.embeddings.create(
             input=query,
             model=self.models['embedding']
         )
         query_embedding = response.data[0].embedding
 
-        # 3. Search in each identified category
+        # Search in each identified category
         all_results = []
-        for category in categories:
-            results = self.milvus.search_similar(
-                category=category,
-                query_embedding=query_embedding,
-                top_k=top_k
-            )
-            
-            # Format and add results
-            for hits in results:
-                for hit in hits:
-                    all_results.append({
-                        'title': hit.entity.get('title'),
-                        'arxiv_id': self._clean_arxiv_id(hit.entity.get('arxiv_id')),
-                        'category': hit.entity.get('category'),
-                        'published': hit.entity.get('published'),
-                        'pdf_url': hit.entity.get('pdf_url'),
-                        'score': hit.distance
-                    })
+
+        results = self.milvus.search_similar(
+            query_embedding=query_embedding,
+            top_k=top_k
+        )
+        
+        # Format and add results
+        for hits in results:
+            for hit in hits:
+                all_results.append({
+                    'title': hit.entity.get('title'),
+                    'arxiv_id': self._clean_arxiv_id(hit.entity.get('arxiv_id')),
+                    'category': hit.entity.get('category'),
+                    'published': hit.entity.get('published'),
+                    'pdf_url': hit.entity.get('pdf_url'),
+                    'authors': hit.entity.get('authors'),
+                    'score': hit.distance
+                })
 
         # 4. Sort by score and return top_k overall
         all_results.sort(key=lambda x: x['score'])
@@ -150,6 +144,7 @@ class ResearchTools:
     def get_citations(self, arxiv_id: str) -> Dict:
         """Get citation metrics from Semantic Scholar API"""
 
+        arxiv_id = self._clean_arxiv_id(arxiv_id)
         url = f"{self.semantic_scholar_base_url}arXiv:{arxiv_id}"
         response = requests.get(url)
         
@@ -162,93 +157,135 @@ class ResearchTools:
             }
         else:
             raise Exception(f"Failed to fetch citation info for {arxiv_id}")
-        
-    def get_summary(self, arxiv_id: str) -> Dict:
-        """
-        Summarize a research paper from its arxiv_id.
-        Returns structured summary excluding references.
-        """
-        try:
-            # 1. Download PDF to temp file
+            
+    def _clean_arxiv_id(self, arxiv_id: str) -> str:
+        """Clean the arxiv_id to be used in the semantic scholar API"""
+        return arxiv_id.split('v')[0] if 'v' in arxiv_id else arxiv_id
+
+    def _get_paper_collection_name(self, arxiv_id: str) -> str:
+        """Get the collection name for a paper"""
+        clean_id = arxiv_id.replace('.', '_') # Remove any quotes
+        return f"paper_{clean_id}"
+    
+    def get_paper_processed(self, arxiv_id: str) -> Dict:
+        """Check if paper has been processed before"""
+
+        arxiv_id = self._clean_arxiv_id(arxiv_id)
+        collection_name = self._get_paper_collection_name(arxiv_id)
+
+        print(f"Checking if paper {collection_name} exists in Milvus")
+        print(f"printing the arxiv_id: {arxiv_id}")
+        # Check if paper is already processed
+        if not self.milvus.has_collection(collection_name):
+            print(f"Processing paper {collection_name} for the first time...")
+                            
             search = arxiv.Search(id_list=[arxiv_id])
             paper = next(self.arxiv_client.results(search))
-
+            
+            # Download and process PDF
             with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
-                # Download directly to temp file
                 paper.download_pdf(dirpath=os.path.dirname(temp_pdf.name),
                                  filename=os.path.basename(temp_pdf.name))
                 temp_path = temp_pdf.name
             
-            # 2. Load and process PDF
+            # Load and chunk PDF
             loader = PyPDFLoader(temp_path)
             pages = loader.load()
-            text = "\n".join(page.page_content for page in pages)
-            
-            # Direct summarization with GPT-4 (better for longer texts)
-            response = self.openai_client.chat.completions.create(
-                model=self.models['summary'],  # Handles longer context
+
+            # Chunk the text
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200,
+                length_function=len,
+            )
+            chunks = text_splitter.split_documents(pages)
+
+            # Prepare data for Milvus
+            chunk_texts = [chunk.page_content for chunk in chunks]
+            embeddings = embed_batch(chunk_texts)
+
+            # Store in Milvus
+            self.milvus.insert_paper_details(
+                collection_name=collection_name,
+                chunks=chunks,
+                embeddings=embeddings
+            )
+            print(f"Paper {arxiv_id} processed and stored in Milvus")
+            return True
+        
+        else:
+            print(f"Paper {arxiv_id} already exists in Milvus.")
+            return False
+        
+    def get_summary(self, arxiv_id: str) -> Dict:
+        """
+        Get paper summary. If paper hasn't been processed before,
+        download, chunk, and store it. If it exists, answer specific queries about it.
+        
+        Args:
+            arxiv_id: The arxiv ID of the paper
+            query: Optional specific question about the paper
+        """
+        arxiv_id = self._clean_arxiv_id(arxiv_id)
+        collection_name = self._get_paper_collection_name(arxiv_id)
+        
+        # Get summary from Milvus
+        all_chunks = self.milvus.get_all_paper_chunks(collection_name)  
+        full_text = "\n".join(chunk['chunk_text'] for chunk in all_chunks)
+        
+        # Generate comprehensive summary
+        summary_response = self.openai_client.chat.completions.create(
+            model=self.models['summary'],
+            messages=[
+                {"role": "system", "content": """You are a research paper summarizer. 
+                   Provide a comprehensive summary of the paper with:
+                   1) Problem/Motivation
+                   2) Key Contributions
+                   3) Methodology
+                   4) Main Results
+                   5) Conclusions"""},
+                {"role": "user", "content": full_text}
+            ]
+        )
+        return {
+            "arxiv_id": arxiv_id,
+            "summary": summary_response.choices[0].message.content,
+            "paper_processed": True
+        }
+        
+    def get_paper_details(self, query: str, arxiv_id: str) -> Dict:
+        """Get specific details about a paper in RAG format. Only works if paper has been processed before."""
+
+        arxiv_id = self._clean_arxiv_id(arxiv_id)
+        collection_name = self._get_paper_collection_name(arxiv_id)
+        
+        if not self.milvus.has_collection(collection_name):
+            return {"error": f"Paper {arxiv_id} not found in database. Please process paper first."}
+        
+        # Get relevant chunks for query
+        query_embedding = embed_batch([query])[0] 
+        chunks = self.milvus.search_paper_chunks(
+            query_embedding=query_embedding,
+            arxiv_id=collection_name,
+        )
+        
+        # Generate answer
+        context = "\n".join(chunk['chunk_text'] for chunk in chunks)
+        
+        answer_response = self.openai_client.chat.completions.create(
+                model=self.models['chat'],
                 messages=[
-                    {"role": "system", "content": "Summarize this research paper with: 1) Key Findings 2) Methodology 3) Results"},
-                    {"role": "user", "content": text}
+                    {"role": "system", "content": """You are an expert at analyzing research papers. 
+                    Answer questions about the paper using only the provided context. 
+                    Be precise and technical in your response. 
+                    If the context doesn't contain enough information to answer the question, say so.
+                    Do not make up information, only use the context provided."""},
+                    {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"}
                 ]
             )
-            
-        except Exception as e:
-            print(f"Error summarizing paper: {e}")
-            return {"error": str(e)}
         
         return {
             "arxiv_id": arxiv_id,
-            "title": paper.title,
-            "summary": response.choices[0].message.content
+            "query": query,
+            "answer": answer_response.choices[0].message.content
         }
-                
-    def _identify_categories(self, query: str) -> List[str]:
-        """
-        Identify relevant ArXiv categories from a natural language query.
-        Returns list of category IDs (e.g., ['cs.AI', 'cs.LG'])
-        """
-        try:
-            # Define category descriptions for better matching
-
-            prompt = f"""Given this research query: "{query}"
-
-            And these ArXiv CS categories:
-            {self.categories}
-
-            Return a Python list containing the most relevant category IDs (maximum 3).
-            Only include the category values (e.g., artificial_intelligence, distributed_computing).
-            If unsure, default to ['unknown'].
-
-            Response format: ['category1', 'category2', 'category3']
-            """
-
-            response = self.openai_client.chat.completions.create(
-                model=self.models['chat'],  # Using cheaper model for simple classification
-                messages=[
-                    {"role": "system", "content": "You are a research paper classifier."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0  # Want consistent categorization
-            )
-            
-            # Parse the list directly
-            try:
-                # Safely evaluate the string as a list
-                categories = eval(response.choices[0].message.content)
-                if not isinstance(categories, list):
-                    raise ValueError("Response not in list format")
-            except:
-                # Fallback if eval fails
-                categories = ['unknown']
-            
-            print(f"Identified categories: {categories}")
-            return categories
-        
-        except Exception as e:
-            print(f"Error in category identification: {e}")
-            return ['unknown']
-        
-    def _clean_arxiv_id(self, arxiv_id: str) -> str:
-        """Clean the arxiv_id to be used in the semantic scholar API"""
-        return arxiv_id.split('v')[0] if 'v' in arxiv_id else arxiv_id

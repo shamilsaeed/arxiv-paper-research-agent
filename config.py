@@ -11,6 +11,8 @@ class MilvusConfig:
     milvus_port: int = int(os.getenv("MILVUS_PORT", 19530))
     milvus_user: str = os.getenv("MILVUS_USER", "")
     milvus_password: str = os.getenv("MILVUS_PASSWORD", "")
+    milvus_collection: str = os.getenv("MILVUS_COLLECTION", "arxiv_papers")
+    milvus_paper_details_collection: str = os.getenv("MILVUS_PAPER_DETAILS_COLLECTION", "arxiv_paper_details")
       
 @dataclass
 class OpenAIConfig:

@@ -1,20 +1,20 @@
 from config import Config
 from openai import OpenAI
 import time
-
+from typing import List
 client = OpenAI()
 config = Config()
 MODEL = config.openai.model
 
 
-def embed_batch(texts, batch_size=100):
+def embed_batch(texts: List[str], batch_size: int = 100, model: str = MODEL) -> List[List[float]]:
     """Embed a batch of texts"""
     all_embeddings = []
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
         response = client.embeddings.create(
             input=batch,
-            model=MODEL
+            model=model
         )
         embeddings = [e.embedding for e in response.data]
         all_embeddings.extend(embeddings)

@@ -6,7 +6,6 @@ from langchain.agents import create_react_agent, AgentExecutor
 from src.embed.vector_db import MilvusManager
 from config import Config
 from langchain.memory import ConversationBufferMemory
-from langchain.prompts import MessagesPlaceholder
 
 CATEGORIES = json.load(open("categories.json"))
 
@@ -47,65 +46,108 @@ class ResearchAssistant:
             memory=self.memory,  # Add memory to executor
             verbose=True,
             handle_parsing_errors=True,
-            max_iterations=3
+            max_iterations=5
         )
 
-    def create_prompt(self) -> PromptTemplate:
+    def create_prompt(self):
         prompt = PromptTemplate.from_template(
-        """You are a helpful and conversational research assistant that helps users find and understand research papers.
+        """You are a research assistant helping users find and understand academic papers.
 
-        IMPORTANT: Not every response needs a tool! Only use tools when you need to fetch new information.
-        - For greetings, questions about capabilities, or clarifications: Respond with just "Thought" and "Final Answer"
-        - For processing or explaining existing results: Use your knowledge to structure and explain
-        - For getting new information about papers: Use the complete tool format
+        You have these tools:
+        {tools}
+
+        IMPORTANT: Only use tools when you need to fetch information about papers!
+        For simple responses (no tools needed):
+        1. Write your Thought
+        2. Write Final Answer immediately after
+
+        For tool usage:
+        1. Write your Thought
+        2. Write Action and Action Input
+        3. Get Observation
+        4. Write Final Answer
+
+        Tool Usage Guide:
+
+        1. get_related_papers: Initial search tool
+           - USE FOR: Finding papers on a topic, authors, publish dates, pdf url
+           - INPUT: Search query (e.g., "transformers in vision")
+           - RETURNS: List of papers with metadata
+
+        2. get_paper_processed: Preparation for deep paper analysis
+           - USE FOR: When user wants to understand paper content
+           - INPUT: arxiv_id (e.g., "2103.14030")
+           - MUST USE before get_paper_details or get_summary
+
+        3. get_paper_details: RAG-based Q&A
+           - USE FOR: Specific questions about paper content
+           - INPUT: query and arxiv_id (e.g. "What is the experimental setup used in the paper?", "2103.14030")
+           - REQUIRES: Paper must be processed first
+
+        4. get_summary: Generate paper summary
+           - USE FOR: Overview of paper content
+           - INPUT: arxiv_id (e.g., "2103.14030")
+           - REQUIRES: Paper must be processed first
+
+        5. get_citations: Citation metrics
+           - USE FOR: Paper impact analysis
+           - INPUT: arxiv_id (e.g., "2103.14030")
+
+        6. get_github_repo: Find code
+           - USE FOR: Implementation/code requests
+           - INPUT: Paper title (e.g. "Transformer Models in Computer Vision")
 
         Previous conversation:
         {chat_history}
 
-        You have access to these tools:
-        {tools}
+        IMPORTANT RULES:
+        1. For greetings or general chat: Just respond with Thought then Final Answer
+        2. Keep track of the arxiv_id of the papers from chat history so you can use them to further answer questions
+        2. Only use tools for paper-related queries
+        3. Your available actions are: [{tool_names}]
 
-        IMPORTANT - Maintain Context:
-        - Keep track of papers mentioned in the conversation
-        - Remember arxiv_ids and titles for follow-up questions
-        - When user refers to a paper by title or context, use the stored arxiv_id
-        - Present information in a natural, conversational way
+        Examples:
 
-        Tool Usage Workflow:
-        1. For initial paper searches:
-           - Use get_related_papers
-           - Process results to match user's needs
-           - Store paper details for follow-up questions
-           
-        2. For paper-specific information:
-           - Extract arxiv_id from context if paper was previously mentioned
-           - Use get_citations for impact metrics
-           - Use get_summary for detailed content
-           - Use get_authors for researcher information
-           - Use get_github_repo for implementation code
+        Human: "Hi there!"
+        Thought: This is a greeting, so I'll respond directly without using any tools.
+        Final Answer: Hello! I'm your research assistant. How can I help you find or understand research papers today?
 
-        Example Natural Conversation:
-
-        User: "Find papers about transformers"
-        Thought: Need to search for papers
+        Human: "Find me papers about transformer models in computer vision?"
+        Thought: Need to search for relevant papers using the search tool.
         Action: get_related_papers
-        Action Input: "transformers"
-        Observation: [List of papers including "ViT: An Image is Worth 16x16 Words" with arxiv_id: 2010.11929]
-        Thought: Got the papers, will present them clearly
-        Final Answer: I found several papers about transformers. The most relevant one is "ViT: An Image is Worth 16x16 Words"...
+        Action Input: "transformer models in computer vision"
+        Observation: [paper 1 with metadata, paper 2 with metadata, ...] Let me present them in bullet points.
+        Final Answer: I found several interesting papers that will be useful for your research.
 
-        User: "Can you summarize that paper?"
-        Thought: User wants a summary of the ViT paper I just mentioned. I have its arxiv_id from previous results
+        Human: "For the first paper, who are the authors?"
+        Thought: Since this is metadata, I can check previous responses to identify the authors of this paper.
+        Action: get_related_papers
+        Action Input: "LLMs in natural language processing"
+        Observation: [papers with metadata]
+        Final Answer: I found several interesting papers about LLMs...
+
+        Human: "Summarize the paper relating to ViT: Transformers"
+        Thought: I need to process the paper first, then get its summary.
+        Action: get_paper_processed
+        Action Input: 2407.1451
+        Observation: True
+        Thought: Now I can get the paper summary.
         Action: get_summary
-        Action Input: "2010.11929"
-
-        Remember:
-        - Be conversational and helpful
-        - Maintain context from previous messages
-        - Store paper details for follow-up queries
-        - Use natural language to transition between topics
-        - For simple responses, just use Thought and Final Answer
-
+        Action Input: 2407.1451
+        Observation: [Summary of the paper...]
+        Thought: I now have the complete summary to share with the user.
+        Final Answer: Here is a summary of the paper
+        [Insert formatted summary here]
+        
+        IMPORTANT FORMAT RULES:
+        - NEVER combine Action and Final Answer in the same response
+        - Complete ALL necessary actions before giving Final Answer
+        - Each response should be either:
+          1. Thought → Action → Action Input
+          OR
+          2. Thought → Final Answer
+        - After an Observation, always start with a new Thought
+        
         Begin!
 
         Human: {input}
@@ -115,26 +157,15 @@ class ResearchAssistant:
         partial_variables={"tool_names": ", ".join([tool.name for tool in self.tools])}
         )
         return prompt
-    
-    async def chat(self, message: str) -> str:
-        """Process user message and return response"""
-        try:
-            response = await self.agent_executor.invoke(
-                {"input": message}
-            )
-            return response["output"]
-        except Exception as e:
-            return f"I encountered an error: {str(e)}"
-        
 
 if __name__ == "__main__":
     # Initialize components
-    milvus_manager = MilvusManager(CATEGORIES)
+    milvus_manager = MilvusManager()
     research_tools = ResearchTools(milvus_manager)
     agent = ResearchAssistant(research_tools)
     agent_executor = agent.agent_executor
     
-    print("Research Assistant initialized. Type 'quit' to exit.")
+    print("ArxiV Research Assistant initialized. Type 'quit' to exit.")
     print("-" * 50)
     
     while True:

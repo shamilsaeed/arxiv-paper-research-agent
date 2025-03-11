@@ -3,7 +3,7 @@ import json
 import numpy as np
 import argparse
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 import time
 
 CATEGORIES = json.load(open("categories.json"))
@@ -17,16 +17,6 @@ class ArxivIngestor:
         self.categories = CATEGORIES
         self.processed_papers = 0
        
-      # Can do 100 request per 5 min which is slow...i will expose this as  a tool for AI agent based on user needs
-    # def get_citation_info(self, arxiv_id):
-    #     url = f"{self.semantic_scholar_base_url}arXiv:{arxiv_id}"
-    #     response = requests.get(url)
-    #     if response.status_code == 200:
-    #         data = response.json()
-    #         return data.get('citationCount', 0), data.get('influentialCitationCount', 0), data.get('citationVelocity', 0)
-    #     else:
-    #         raise Exception(f"Failed to fetch citation info for {arxiv_id}")
-    
     def _clean_arxiv_id(self, arxiv_id: str) -> str:
         """Remove version number from arxiv ID"""
         return arxiv_id.split('v')[0]
@@ -66,7 +56,8 @@ class ArxivIngestor:
                             'arxiv_id': arxiv_id,
                             'category': paper.primary_category,
                             'published': paper.published.strftime('%Y-%m-%d'),
-                            'pdf_url': paper.pdf_url
+                            'pdf_url': paper.pdf_url,
+                            "authors": ', '.join([a.name for a in paper.authors])
                         }
                         
                         category = paper.primary_category
