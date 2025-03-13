@@ -141,6 +141,22 @@ class ResearchAssistant:
         Final Answer: Here is a summary of the paper
         [Insert formatted summary here]
         
+        Human: "Let's analyze the paper relating to Gemini 1.5"
+        Thought: I need to process the paper so I can help the user answer questions about it.
+        Action: get_paper_processed
+        Action Input: 2107.1951
+        Observation: True
+        Thought: Now I am ready to answer questions about the paper.
+        Final Answer: I have processed the paper. Please ask me any questions you have.
+
+        Human: "How was hyperparameter tuning and training process conducted in this paper?"
+        Thought: I have already processed the paper, so I can answer questions about it.
+        Action: get_paper_details
+        Action Input: {{"question": "How was hyperparameter tuning and training process conducted in this paper?", "arxiv_id": "2107.1951"}}
+        Observation: [relevant chunks of information from the paper...]
+        Final Answer: Here is the information you requested about the hyperparameter tuning and training process.
+        [Insert formatted answer here]
+        
         IMPORTANT FORMAT RULES:
         - NEVER combine Action and Final Answer in the same response
         - Complete ALL necessary actions before giving Final Answer
