@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import tempfile
@@ -63,16 +64,16 @@ class ResearchTools:
                 Output: Boolean (True if newly processed, False if already exists)""",
                 func=self.get_paper_processed
             ),
-            # Tool(
-            #     name="get_paper_details",
-            #     description="""Answer specific questions about a processed paper using RAG.
-            #     Only works if paper has been processed before.
-            #     Input format: Two parameters separated by comma:
-            #     "your question here", "paper_id_here"
-            #     Example: "What methods were used to analyze the data?", "2312.12345"
-            #     Output: Detailed answer based on paper content""",
-            #     func=self.get_paper_details
-            # ),
+            Tool(
+                name="get_paper_details",
+                description="""Answer specific questions about a processed paper using RAG.
+                Only works if paper has been processed before.
+                Input format: Dict with two keys:
+                {'question': 'your question here', 'arxiv_id': 'paper_id_here'}
+                Example: {'question': 'What methods were used to analyze the data?', 'arxiv_id': '2312.12345'}
+                Output: Detailed answer based on paper content""",
+                func=self.get_paper_details
+            ),
             Tool(
                 name="get_summary",
                 description="""Generate a structured summary of a paper.
@@ -173,8 +174,9 @@ class ResearchTools:
 
     def _get_paper_collection_name(self, arxiv_id: str) -> str:
         """Get the collection name for a paper"""
-        clean_id = arxiv_id.replace('.', '_') # Remove any quotes
-        return f"paper_{clean_id}"
+        # Remove any quotes and replace dots with underscores
+        clean_id = arxiv_id.replace('.', '_')
+        return f"paper_{clean_id}"  # Removed the underscore after "paper"
     
     def get_paper_processed(self, arxiv_id: str) -> Dict:
         """Check if paper has been processed before"""
@@ -272,14 +274,23 @@ class ResearchTools:
             "paper_processed": True
         }
         
-    def get_paper_details(self, query: str, arxiv_id: str) -> Dict:
+    def get_paper_details(self, paper_query: str) -> Dict:
         """Get specific details about a paper in RAG format. Only works if paper has been processed before."""
 
+        paper_query_dict = ast.literal_eval(paper_query)
+        query = paper_query_dict['question']
+        arxiv_id = paper_query_dict['arxiv_id']
+        
+        print(f"arxiv_id: {arxiv_id}")
+        print(f"query: {query}")
+        
         arxiv_id = self._clean_arxiv_id(arxiv_id)
         collection_name = self._get_paper_collection_name(arxiv_id)
         
         if not self.milvus.has_collection(collection_name):
-            return {"error": f"Paper {arxiv_id} not found in database. Please process paper first."}
+            return {"error": f"Paper {collection_name} not found in database. Please process paper first."}
+        
+        print("gellow")
         
         # Get relevant chunks for query
         query_embedding = embed_batch([query])[0] 
