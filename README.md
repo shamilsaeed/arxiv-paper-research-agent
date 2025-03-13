@@ -93,9 +93,9 @@ Once the application is running, you can:
    You: Find papers about transformer models in computer vision
    ```
 
-2. **Process a Paper**
+2. **Summarize a Paper**
    ```
-   You: Process paper 2103.14030
+   You: Summarize paper relating to ViT: Transformers
    ```
 
 3. **Ask Questions**
@@ -108,19 +108,10 @@ Once the application is running, you can:
    You: How many citations does this paper have?
    ```
 
-## 📝 System Requirements
-
-- Python 3.11+
-- Docker and Docker Compose
-- 16GB RAM recommended
-- Sufficient disk space for paper storage
-
-## 🔍 Troubleshooting
-
-- If Milvus connection fails, ensure Docker containers are running:
-  ```bash
-  docker ps
-  ```
+5. **Get Code**
+   ```
+   You: What code is associated with this paper if any?
+   ```
 
 ## 🤝 Improvements
 
