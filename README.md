@@ -1,6 +1,6 @@
 # ArXiv Paper Research Assistant
 
-A sophisticated research assistant (ReAct) that helps users find, process, and understand academic papers using vector search and large language models
+A sophisticated research assistant (ReAct Agent) that helps users find, process, and understand academic papers using vector search and large language models
 
 ## 🌟 Features
 
@@ -42,28 +42,89 @@ A sophisticated research assistant (ReAct) that helps users find, process, and u
 
 ## 🚀 Getting Started
 
-1. **Environment Setup**
+### 1. Environment Setup
+```bash
+# Install poetry if you haven't already
+curl -sSL https://install.python-poetry.org | python3 -
+
+# Install dependencies
+poetry install
+```
+
+### 2. Configuration
+- Create a `config.py` file with your API keys:
+  - Groq API key
+  - OpenAI API key
+  - GitHub token
+- Configure Milvus connection settings
+
+### 3. Start Milvus
+```bash
+# Start Milvus using Docker Compose
+docker compose up -d
+```
+
+### 4. Data Pipeline Setup
+
+1. **Ingest Papers**
    ```bash
-   # Install dependencies
-   poetry install
+   # Ingest papers from ArXiv within a date range. e.g:
+   poetry run python src/papers/ingest.py --start-date 20240301 --end-date 20240330
    ```
 
-2. **Configuration**
-   - Create a `config.py` file with your API keys:
-     - Groq API key
-     - OpenAI API key
-     - GitHub token
-   - Configure Milvus connection settings
-   - Run docker compose to start Milvus
-
-3. **Running the Assistant**
-   ```python
-   from src.workflow.agent import ResearchAssistant
-   from src.embed.vector_db import MilvusManager
-   from src.workflow.tools import ResearchTools
-
-   # Initialize components
-   milvus_manager = MilvusManager()
-   research_tools = ResearchTools(milvus_manager)
-   agent = ResearchAssistant(research_tools)
+2. **Load Papers to Milvus**
+   ```bash
+   # Process and load ingested papers into Milvus
+   poetry run python src/embed/main.py
    ```
+
+### 5. Run the Application
+```bash
+# Start the research assistant
+streamlit run src/app.py
+```
+
+## 💬 Usage Examples
+
+Once the application is running, you can:
+
+1. **Search for Papers**
+   ```
+   You: Find papers about transformer models in computer vision
+   ```
+
+2. **Process a Paper**
+   ```
+   You: Process paper 2103.14030
+   ```
+
+3. **Ask Questions**
+   ```
+   You: What were the main results of the paper?
+   ```
+
+4. **Get Citations**
+   ```
+   You: How many citations does this paper have?
+   ```
+
+## 📝 System Requirements
+
+- Python 3.11+
+- Docker and Docker Compose
+- 16GB RAM recommended
+- Sufficient disk space for paper storage
+
+## 🔍 Troubleshooting
+
+- If Milvus connection fails, ensure Docker containers are running:
+  ```bash
+  docker ps
+  ```
+
+## 🤝 Improvements
+
+- Need to speed up the processing of papers as it is heavy operation
+- Need to improve the agent to parse inputs better
+- Need to add more error handling
+- Need to improve the vector database to be more efficient
