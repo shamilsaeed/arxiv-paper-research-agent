@@ -111,9 +111,9 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Ingest ArXiv papers for a specific date range')
     parser.add_argument('--start-date', type=str, required=True,
-                      help='Start date in YYYY-MM format (e.g., 2024-01)')
+                      help='Start date in YYYYMMDD format (e.g., 20240101)')
     parser.add_argument('--end-date', type=str, required=True,
-                      help='End date in YYYY-MM format (e.g., 2024-02)')
+                      help='End date in YYYYMMDD format (e.g., 20240401)')
     
     args = parser.parse_args()
     

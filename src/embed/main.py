@@ -26,8 +26,6 @@ if __name__ == "__main__":
     # Insert papers
     data_dir = Path("data/raw")
     jsonl_files = list(data_dir.glob("**/*.jsonl"))
-
-    jsonl_files = jsonl_files[371:]
     
     for jsonl_file in tqdm(jsonl_files, desc="Processing files"):
         print(f"\nProcessing {jsonl_file}")

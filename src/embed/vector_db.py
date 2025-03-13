@@ -9,7 +9,7 @@ config = Config()
 MILVUS_HOST = config.milvus.milvus_host
 MILVUS_PORT = config.milvus.milvus_port
 PAPERS_COLLECTION = config.milvus.milvus_collection
-PAPER_DETAILS_COLLECTION = config.milvus.milvus_paper_details_collection
+
 
 class MilvusManager:
     def __init__(self):
@@ -143,8 +143,7 @@ class MilvusManager:
     
     def search_paper_chunks(self, query_embedding: List[float], arxiv_id: str, top_k: int = 5) -> List[Dict]:
         """Search for relevant chunks within a specific paper"""
-        # Format collection name properly
-        collection_name = f"paper_{arxiv_id.replace('.', '_')}"  # Match the format from _get_paper_collection_name
+        collection_name = arxiv_id  # The collection name is already properly formatted when passed in
         
         if not utility.has_collection(collection_name):
             raise ValueError(f"{collection_name} not found in milvus database")
@@ -157,7 +156,7 @@ class MilvusManager:
             anns_field="embedding",
             param=self.search_params,
             limit=top_k,
-            output_fields=["chunk_text", "id"]
+            output_fields=["chunk_text", "chunk_id"]
         )
 
         # Format results for easier consumption
@@ -166,12 +165,12 @@ class MilvusManager:
             for hit in hits:
                 formatted_results.append({
                     'chunk_text': hit.entity.get('chunk_text'),
-                    'id': hit.entity.get('id'),
+                    'chunk_id': hit.entity.get('chunk_id'),
                     'score': hit.distance
                 })
         
-        # Sort by id to maintain document context
-        formatted_results.sort(key=lambda x: x['id'])
+        # Sort by chunk_id to maintain document context
+        formatted_results.sort(key=lambda x: x['chunk_id'])
         return formatted_results
     
     def get_collection(self) -> Collection:
